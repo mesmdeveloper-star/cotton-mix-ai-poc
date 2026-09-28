@@ -1,0 +1,38 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CottonMix AI POC</title>
+<style>
+body{font-family:Inter,Arial,sans-serif;margin:0;background:#f4f7fb;color:#172033}header{background:#0b1730;color:white;padding:20px 28px}main{max-width:1200px;margin:25px auto;padding:0 18px}.grid{display:grid;grid-template-columns:330px 1fr;gap:18px}.card{background:white;border:1px solid #e4e8ef;border-radius:14px;padding:18px;margin-bottom:18px;box-shadow:0 3px 12px #15234a0a}.fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}.fields label{font-size:12px;color:#667085}.fields input{width:100%;padding:8px;margin-top:4px;box-sizing:border-box;border:1px solid #d5dbe5;border-radius:7px}.btn{width:100%;padding:11px;border:0;border-radius:8px;background:#1769e0;color:white;font-weight:700;cursor:pointer;margin-top:12px}.btn.alt{background:#edf3ff;color:#1756b4}.metric{background:#f8fafc;border:1px solid #e8ebf1;border-radius:10px;padding:13px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.metric b{display:block;font-size:22px;margin-top:4px}.metric small{color:#667085}.tablewrap{overflow:auto}.table{width:100%;border-collapse:collapse;font-size:12px}.table th,.table td{padding:9px;border-bottom:1px solid #edf0f4;text-align:left;white-space:nowrap}.pill{background:#e8f7ee;color:#147a3d;padding:4px 7px;border-radius:10px;font-weight:700}.muted{color:#667085;font-size:13px}.tag{display:inline-block;background:#fff1d4;color:#966100;padding:5px 8px;border-radius:10px;font-size:10px;font-weight:700}.hidden{display:none}.error{background:#fff0f0;color:#a22;padding:9px;border-radius:8px;margin-top:10px;font-size:12px}@media(max-width:850px){.grid{grid-template-columns:1fr}.metrics{grid-template-columns:1fr 1fr}}
+</style></head>
+<body><header><b>🧵 CottonMix AI</b> <span style="float:right;font-size:12px">POC · Decision Support</span></header>
+<main><h1>AI Cotton Bale Mixing Recommendation</h1><p class="muted">Upload bale test reports → define 40s quality → recommend a balanced bale combination → explain the decision → validate against historical production.</p>
+<div class="grid"><aside>
+<div class="card"><b>1 · Upload Cotton Test Report</b><p class="muted">Excel (.xlsx). The POC accepts common bale-test column names.</p>
+<input id="file" type="file" accept=".xlsx,.xlsm"><button class="btn alt" onclick="location='/sample/cotton_bales.xlsx'">Download Sample 150-Bale Excel</button></div>
+<div class="card"><b>2 · 40s Quality Requirements</b><div class="fields" style="margin-top:12px">
+<label>Quantity kg<input id="quantity" value="10000" type="number"></label><label>Mic min<input id="mic_min" value="3.8" step=".1" type="number"></label>
+<label>Mic max<input id="mic_max" value="4.2" step=".1" type="number"></label><label>Mic target<input id="mic_target" value="4.0" step=".1" type="number"></label>
+<label>Length min<input id="length_min" value="28" step=".1" type="number"></label><label>Strength min<input id="strength_min" value="30" step=".1" type="number"></label>
+<label>UI min<input id="uniformity_min" value="82" step=".1" type="number"></label><label>Rd min<input id="rd_min" value="74" step=".1" type="number"></label>
+<label>+b min<input id="pb_min" value="7" step=".1" type="number"></label></div>
+<button class="btn" onclick="analyze()">▶ Run AI Recommendation</button><div id="status" class="muted"></div><div id="err" class="error hidden"></div></div>
+</aside><section id="output">
+<div class="card"><b>POC ready</b><p class="muted">Run the recommendation to see bale selection, explainability, predicted blend quality and historical validation.</p></div>
+</section></div></main>
+<script>
+let current=null;const $=x=>document.getElementById(x);
+function form(){let f=new FormData();f.append('file',$('file').files[0]);['quantity','mic_min','mic_max','mic_target','length_min','strength_min','uniformity_min','rd_min','pb_min'].forEach(k=>f.append(k,$(k).value));return f}
+async function analyze(){if(!$('file').files[0])return error('Please upload an Excel file.');$('status').textContent='Analyzing 100+ bales…';$('err').classList.add('hidden');
+try{let r=await fetch('/api/analyze',{method:'POST',body:form()}),d=await r.json();if(!r.ok)throw Error(d.error);current=d;render(d);$('status').textContent='Analysis complete.'}catch(e){error(e.message)}}
+function error(x){$('err').textContent=x;$('err').classList.remove('hidden')}
+function render(d){$('output').innerHTML='<div class="card"><b>3 · Recommendation Summary</b><div class="metrics" style="margin-top:12px">'+
+m('Bales analyzed',d.total_bales)+m('Bales selected',d.selected_count)+m('Recommended qty',Math.round(d.selected_qty).toLocaleString()+' kg')+m('Confidence',d.confidence+'%')+
+'</div></div><div class="card"><b>4 · Recommended Bale Combination</b><div class="tablewrap"><table class="table"><tr><th>Bale</th><th>Origin</th><th>Strength</th><th>Length</th><th>Mic</th><th>UI</th><th>Weight</th><th>Score</th><th>Why</th></tr>'+
+d.selected.map(b=>'<tr><td><b>'+b.id+'</b></td><td>'+b.origin+'</td><td>'+v(b.strength)+'</td><td>'+v(b.length)+'</td><td>'+v(b.mic)+'</td><td>'+v(b.uniformity)+'</td><td>'+v(b.weight)+'</td><td><span class="pill">'+b.score+'%</span></td><td>'+(b.reasons.length?b.reasons.join(', '):'Key parameters within target')+'</td></tr>').join('')+
+'</table></div></div><div class="card"><b>5 · Why this combination?</b><p class="muted">The engine scores micronaire, length, strength, uniformity, Rd and +b, while limiting excessive dependence on one origin. Higher-scoring bales are selected until the required quantity is reached.</p></div>'+
+'<div class="card"><b>6 · Expected Quality</b><div class="metrics" style="margin-top:12px">'+Object.entries(d.expected).map(x=>m(x[0],x[1])).join('')+'</div></div>'+
+'<div class="card"><b>7 · Historical Validation</b><p class="muted">Upload the historical workbook to compare this recommendation with past 40s mixes.</p><input id="hist" type="file" accept=".xlsx,.xlsm"><button class="btn" onclick="validate()">Validate Against Historical Data</button><div id="validation"></div></div>'+
+'<div class="card" style="background:#101d3a;color:white"><span class="tag">PHASE 2 PREVIEW</span><h3>Procurement Intelligence</h3><p style="color:#c8d4e8">Price history + inventory + market/news signals can be added next to recommend what to buy, when to buy and how much.</p></div>'}
+function m(a,b){return '<div class="metric"><small>'+a+'</small><b>'+b+'</b></div>'}function v(x){return x==null?'—':x}
+async function validate(){let hf=$('hist').files[0];if(!hf)return error('Upload historical mixes Excel first.');let f=form();f.delete('file');f.append('bales',$('file').files[0]);f.append('historical',hf);try{let r=await fetch('/api/validate',{method:'POST',body:f}),d=await r.json();if(!r.ok)throw Error(d.error);let c=d.closest;document.getElementById('validation').innerHTML='<div class="metrics" style="margin-top:12px">'+m('Historical mixes',d.historical_count)+m('Closest mix',c?c.id:'—')+m('Similarity',d.similarity+'%')+m('Historical grade',c?c.grade:'—')+'</div>'+(c?'<div class="tablewrap"><table class="table"><tr><th>Parameter</th><th>Current AI</th><th>Historical</th><th>Difference</th></tr>'+Object.keys(d.current).map(k=>'<tr><td>'+k+'</td><td>'+d.current[k]+'</td><td>'+v(c[k])+'</td><td>'+v(d.variances[k])+'</td></tr>').join('')+'</table></div>':'')}catch(e){error(e.message)}}
+</script></body></html>
